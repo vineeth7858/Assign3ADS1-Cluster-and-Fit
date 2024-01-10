@@ -1,21 +1,104 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-os.environ["OMP_NUM_THREADS"] = "1"
 import warnings
-warnings.filterwarnings("ignore", category=UserWarning)
 import sklearn.preprocessing as pp
 import sklearn.metrics as skmet
 from sklearn import cluster
 import matplotlib.cm as cm
+from scipy.optimize import curve_fit
 
+def read_data(filename):
+    """
+    Reads a CSV file and returns a DataFrame.
 
+    Parameters:
+    filename (str): The path to the CSV file to be read.
+
+    Returns:
+    pd.DataFrame: A DataFrame containing the data read from the CSV file.
+    """
+    df = pd.read_csv(filename)
+    return df
+
+def polynomial_fit(x, a, b, c, d):
+    """
+    Calculates the value of a cubic polynomial at given x.
+
+    Parameters:
+    x (number or array): The value(s) at which the polynomial is evaluated.
+    a, b, c, d (number): Coefficients of the cubic polynomial.
+
+    Returns:
+    number or array: The value of the cubic polynomial at x.
+    """
+    return a * x**3 + b * x**2 + c * x + d
+
+def error_range(x, f, params, cov_matrix):
+    """
+    Calculates the error range for a  polynomial function and its parameters.
+
+    Parameters:
+    x (number or array): The input value(s) at which the error is evaluated.
+    f (function): The polynomial function for which the error is calculated.
+    params (list or array): Coefficients of the polynomial.
+    cov_matrix (array): The covariance matrix of the polynomial parameters.
+
+    Returns:
+    numpy.ndarray: The calculated error values corresponding to each x.
+    """
+    var = np.zeros_like(x)
+    for i in range(len(params)):
+        deriv1 = derivative(x, f, params, i)
+        for j in range(len(params)):
+            deriv2 = derivative(x, f, params, j)
+            var += deriv1 * deriv2 * cov_matrix[i, j]
+    return np.sqrt(var)
+
+def derivative(x, f, params, index):
+    """
+    Calculates the derivative of a polynomial function 
+    with respect to one of its coefficients.
+
+    Parameters:
+    x (number or array): The value(s) at which the derivative is calculated.
+    f (function): The polynomial function for which the derivative calculated.
+    params (list or array): Coefficients of the polynomial.
+    index (int): The index of the coefficient.
+
+    Returns:
+    numpy.ndarray or number: The derivative of the polynomial function.
+    """
+    val = 1e-6
+    delta = np.zeros_like(params)
+    delta[index] = val * abs(params[index])
+    up = params + delta
+    low = params - delta
+    diff = 0.5 * (f(x, *up) - f(x, *low))
+    return diff / (val * abs(params[index]))
+
+def one_silhouette(xy, num_clusters):
+    """
+    Computes the silhouette score for a given clustering of 2D data.
+
+    Parameters:
+    xy (array): 2D data points.
+    num_clusters (int): The number of clusters for k-means clustering.
+
+    Returns:
+    float: The silhouette score for the clustering.
+    """
+    kmeans = cluster.KMeans(n_clusters=num_clusters, n_init=20)
+    kmeans.fit(xy)
+    labels = kmeans.labels_
+    score = skmet.silhouette_score(xy, labels)
+    return score
 
 df_land = pd.read_csv("BBData.csv")
 print(df_land.describe())
 # The plan is to use 2000 and 2020 for clustering. Countries with one NaN are 
 df_land = df_land[(df_land["2005"].notna()) & (df_land["2020"].notna())]
+warnings.filterwarnings("ignore", category=UserWarning)
 df_land = df_land.reset_index(drop=True)
 # extract 2000
 growth = df_land[["Country Name", "2005"]].copy()
@@ -45,19 +128,9 @@ plt.xlabel("Arable land(hect per person),2005")
 plt.ylabel("Growth per year [%]")
 plt.show()
 
-def one_silhoutte(xy, n):
-    # set up the clusterer with the number of expected clusters
-    kmeans = cluster.KMeans(n_clusters=n, n_init=20)
-    # Fit the data, results are stored in the kmeans object
-    kmeans.fit(xy) # fit done on x,y pairs
-    labels = kmeans.labels_
-    # calculate the silhoutte score
-    score = (skmet.silhouette_score(xy, labels))
-    return score
-
 #calculate silhouette score for 2 to 10 clusters
 for ic in range(2, 11):
-    score = one_silhoutte(norm, ic)
+    score = one_silhouette(norm, ic)
     print(f"The silhouette score for {ic: 3d} is {score: 7.4f}")
 
 # set up the clusterer with the number of expected clusters
@@ -117,73 +190,50 @@ plt.ylabel("Growth per year [%]")
 plt.show()
 
 
-# Define the derivative and error propagation functions
-def deriv(x, func, coeffs, ip):
-    scale = 1e-6
-    delta = np.zeros_like(coeffs, dtype=np.float64)  # Ensure delta is float64
-    val = scale * np.abs(coeffs[ip])
-    delta[ip] = val
-    coeffs_plus = coeffs.copy()
-    coeffs_plus[ip] += delta[ip]
-    coeffs_minus = coeffs.copy()
-    coeffs_minus[ip] -= delta[ip]
-    f_plus = func(x, coeffs_plus)
-    f_minus = func(x, coeffs_minus)
-    return (f_plus - f_minus) / (2 * val)
+# Code for Fitting Europe Arable land Data
+# Load and transpose Europe land data
+Fer_w = read_data('BBData_Uk.csv')
+Fer_w_T = Fer_w.T
 
-def error_prop(x, func, coeffs, covar):
-    var = np.zeros_like(x, dtype=np.float64)  # Ensure var is float64
-    for i in range(len(coeffs)):
-        for j in range(len(coeffs)):
-            var += deriv(x, func, coeffs, i) * deriv(x, func, coeffs, j) * covar[i, j]
-    return np.sqrt(var)
+# Cleaning the transposed data
+Fer_w_T.columns = ['Connection']
+Fer_w_T = Fer_w_T.drop('Year')
+Fer_w_T.reset_index(inplace=True)
+Fer_w_T.rename(columns={'index': 'Year'}, inplace=True)
+Fer_w_T['Year'] = Fer_w_T['Year'].astype(int)
+Fer_w_T['Connection'] = Fer_w_T['Connection'].astype(float)
 
-# Polynomial function for use with deriv and adapted_error_prop
-def polynomial_function(x, coeffs):
-    return np.polyval(coeffs, x)
+# Appending to x and y values for modeling
+x_val = Fer_w_T['Year'].values.astype(float)
+y_val = Fer_w_T['Connection'].values.astype(float)
 
-# Load the data from the provided CSV file
-file_path = 'BBData_Uk.csv'
-data = pd.read_csv(file_path)
+# Fitting the polynomial model to the data
+popt, pcov = curve_fit(polynomial_fit, x_val, y_val)
 
-# Extract the years and fertility rates
-years = np.array(data.columns[1:], dtype=np.float64)
-fertility_rates = data.iloc[0, 1:].values.astype(np.float64)
+# Calculate error ranges for original data
+y_err = error_range(x_val, polynomial_fit, popt, pcov)
 
-# Normalize the years for the polynomial fitting process
-normalized_years = years - np.min(years)
+# Predict for future years and predict values
+fut_x = np.arange(max(x_val) + 1, 2031)
+fut_y = polynomial_fit(fut_x, *popt)
 
-# Fit the polynomial and calculate the covariance matrix
-degree_coeffs, cov_matrix = np.polyfit(normalized_years, fertility_rates, 3, cov=True)
+# Calculate error ranges for predictions
+y_fut_err = error_range(fut_x, polynomial_fit, popt, pcov)
 
-# Future years for prediction
-future_years_normalized = np.arange(normalized_years[-1] + 1, normalized_years[-1] + 11, dtype=np.float64)
-
-# Calculate future predictions using the polynomial function
-future_fertility_rates = polynomial_function(future_years_normalized, degree_coeffs)
-
-# Calculate the confidence intervals for future predictions
-confidence_intervals_future = error_prop(future_years_normalized, polynomial_function, degree_coeffs, cov_matrix)
-
-# Plot the original data, polynomial fit, and future predictions with confidence intervals
-plt.figure(figsize=(12, 6))
-plt.plot(years, fertility_rates, 'b-', label='Original Data')
-plt.plot(years, np.polyval(degree_coeffs, normalized_years), 'r-', label='Polynomial Fit')
-
-# Set the y-axis limits to the range of the original data plus some padding
-plt.ylim([min(fertility_rates), 70])
-
-# Plot future predictions with confidence intervals
-future_years_actual = years[-1] + (future_years_normalized - normalized_years[-1])
-plt.plot(future_years_actual, future_fertility_rates, 'r--', label='Future Predictions (Degree 3)')
-plt.fill_between(future_years_actual, 
-                 future_fertility_rates - confidence_intervals_future, 
-                 future_fertility_rates + confidence_intervals_future, 
-                 color='red', alpha=0.2, label='95% Confidence Interval')
-
-# Add labels and title
+# Plotting the fitting data and predicted data
+plt.figure(figsize=(10, 6))
+plt.plot(x_val, y_val, 'g-', label='Actual Data')
+plt.plot(x_val, polynomial_fit(x_val, *popt), 'b-',
+         label='Fitted Model')
+plt.fill_between(x_val, polynomial_fit(x_val, *popt) -
+                 y_err, polynomial_fit(x_val, *popt) + y_err, 
+                 color='lightblue',alpha=0.5, label='CI for Actual Data')
+plt.plot(fut_x, fut_y, 'b--', label='Future values')
+plt.fill_between(fut_x, fut_y - y_fut_err, fut_y +
+                 y_fut_err, color='lightblue',
+                 alpha=0.5, label='CI for  Future values')
+plt.title('Fitting & Predicting Future for Fertility Rates for Country India')
 plt.xlabel('Year')
-plt.ylabel('Fixed broadband subscriptions (per 100 people)')
-plt.title('Polynomial Fit and Future Predictions with Confidence Intervals')
-plt.legend(loc='upper left')
+plt.ylabel('Arable land [Hect per person]')
+plt.legend()
 plt.show()
