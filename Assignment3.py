@@ -8,7 +8,7 @@ from sklearn import cluster
 import matplotlib.cm as cm
 from scipy.optimize import curve_fit
 
-def read_data(filename):
+def Getdata(filename):
     """
     Reads a CSV file and returns a DataFrame.
 
@@ -94,49 +94,52 @@ def one_silhouette(xy, num_clusters):
     score = skmet.silhouette_score(xy, labels)
     return score
 
-df_land = pd.read_csv("BBData.csv")
-print(df_land.describe())
-# The plan is to use 2000 and 2020 for clustering. Countries with one NaN are 
-df_land = df_land[(df_land["2005"].notna()) & (df_land["2020"].notna())]
+Fb_Data = Getdata("BBData.csv")
+print(Fb_Data.describe())
+# use 2005 and 2020 for clustering. Countries with one NaN are avoided
+Fb_Data = Fb_Data[(Fb_Data["2005"].notna()) & (Fb_Data["2020"].notna())]
 warnings.filterwarnings("ignore", category=UserWarning)
-df_land = df_land.reset_index(drop=True)
-# extract 2000
-growth = df_land[["Country Name", "2005"]].copy()
-# and calculate the growth over 60 years
-growth["Growth"] = 100.0/60.0 * (df_land["2020"]-df_land["2005"]) / df_land["2005"]
+Fb_Data = Fb_Data.reset_index(drop=True)
+# extract 2005
+growth = Fb_Data[["Country Name", "2005"]].copy()
+# and calculate the growth over 15 years
+growth["Growth"] = 100.0/15.0 * (Fb_Data["2020"]-
+                                 Fb_Data["2005"]) / Fb_Data["2005"]
 print(growth.describe())
 print()
 print(growth.dtypes)
 
 plt.figure(figsize=(8, 8))
 plt.scatter(growth["2005"], growth["Growth"])
-plt.xlabel("Arable land(hect per person),2005")
-plt.ylabel("Growth per year [%]")
+plt.xlabel("Fixed broadband subscriptions (per 100 people),2005")
+plt.ylabel("Growth per year in percentage")
 plt.show()
+
 
 # create a scaler object
 scaler = pp.RobustScaler()
 # and set up the scaler
 # extract the columns for clustering
-df_ex = growth[["2005", "Growth"]]
-scaler.fit(df_ex)
+Fb_Clust = growth[["2005", "Growth"]]
+scaler.fit(Fb_Clust)
 # apply the scaling
-norm = scaler.transform(df_ex)
+FB_norm = scaler.transform(Fb_Clust)
 plt.figure(figsize=(8, 8))
-plt.scatter(norm[:, 0], norm[:, 1])
-plt.xlabel("Arable land(hect per person),2005")
-plt.ylabel("Growth per year [%]")
+plt.scatter(FB_norm[:, 0], FB_norm[:, 1])
+plt.xlabel("Fixed broadband subscriptions (per 100 people),2005")
+plt.ylabel("Growth per year in percentage")
 plt.show()
 
+
 #calculate silhouette score for 2 to 10 clusters
-for ic in range(2, 11):
-    score = one_silhouette(norm, ic)
-    print(f"The silhouette score for {ic: 3d} is {score: 7.4f}")
+for i in range(2, 11):
+    SScore = one_silhouette(FB_norm, i)
+    print(f"The silhouette score for {i: 3d} is {SScore: 7.4f}")
 
 # set up the clusterer with the number of expected clusters
 kmeans = cluster.KMeans(n_clusters=3, n_init=20)
 # Fit the data, results are stored in the kmeans object
-kmeans.fit(norm) # fit done on x,y pairs
+kmeans.fit(FB_norm) # fit done on x,y pairs
 # extract cluster labels
 labels = kmeans.labels_
 # extract the estimated cluster centres and convert to original scales
@@ -146,11 +149,13 @@ xkmeans = cen[:, 0]
 ykmeans = cen[:, 1]
 plt.figure(figsize=(8.0, 8.0))
 # plot data with kmeans cluster number
-plt.scatter(growth["2005"], growth["Growth"], 10, labels, marker="o", cmap=cm.rainbow)
+plt.scatter(growth["2005"], growth["Growth"], 10, labels, marker="o", 
+            cmap=cm.rainbow, label = 'Data Points')
 # show cluster centres
-plt.scatter(xkmeans, ykmeans, 45, "k", marker="d")
-plt.xlabel("Arable land(hect per person),2005")
-plt.ylabel("Growth per year [%]")
+plt.scatter(xkmeans, ykmeans, 45, "k", marker="d", label = 'Cluster Centers')
+plt.xlabel("Fixed broadband subscriptions (per 100 people),2005")
+plt.ylabel("Growth per year in percentage")
+plt.legend()
 plt.show()
 
 print(cen)
@@ -158,21 +163,22 @@ print(cen)
 growth2 = growth[labels==0].copy()
 print(growth2.describe())
 
-df_ex = growth2[["2005", "Growth"]]
-scaler.fit(df_ex)
+df_clust2 = growth2[["2005", "Growth"]]
+scaler.fit(df_clust2)
 # apply the scaling
-norm = scaler.transform(df_ex)
+FB_norm2 = scaler.transform(df_clust2)
 plt.figure(figsize=(8, 8))
-plt.scatter(norm[:, 0], norm[:, 1])
-plt.xlabel("Arable land(hect per person),2005")
-plt.ylabel("Growth per year [%]")
+plt.scatter(FB_norm2[:, 0], FB_norm2[:, 1])
+plt.xlabel("Fixed broadband subscriptions (per 100 people),2005")
+plt.ylabel("Growth per year in percentage")
 plt.show()
+
 
 
 # set up the clusterer with the number of expected clusters
 kmeans = cluster.KMeans(n_clusters=3, n_init=20)
 # Fit the data, results are stored in the kmeans object
-kmeans.fit(norm) # fit done on x,y pairs
+kmeans.fit(FB_norm2) # fit done on x,y pairs
 # extract cluster labels
 labels = kmeans.labels_
 # extract the estimated cluster centres and convert to original scales
@@ -182,30 +188,32 @@ xkmeans = cen[:, 0]
 ykmeans = cen[:, 1]
 plt.figure(figsize=(8.0, 8.0))
 # plot data with kmeans cluster number
-plt.scatter(growth2["2005"], growth2["Growth"], 10, labels, marker="o", cmap=cm.rainbow)
+plt.scatter(growth2["2005"], growth2["Growth"], 10, labels, 
+            marker="o", cmap=cm.rainbow, label = 'Data Points')
 # show cluster centres
-plt.scatter(xkmeans, ykmeans, 45, "k", marker="d")
-plt.xlabel("Arable land(hect per person),2005")
-plt.ylabel("Growth per year [%]")
+plt.scatter(xkmeans, ykmeans, 45, "k", marker="d", label = 'Cluster Centers')
+plt.xlabel("Fixed broadband subscriptions (per 100 people),2005")
+plt.ylabel("Growth per year in percentage")
+plt.legend()
 plt.show()
 
 
 # Code for Fitting Europe Arable land Data
 # Load and transpose Europe land data
-Fer_w = read_data('BBData_Uk.csv')
-Fer_w_T = Fer_w.T
+FB_UK_Data = Getdata('BBData_Uk.csv')
+FB_UK_Data_T = FB_UK_Data.T
 
 # Cleaning the transposed data
-Fer_w_T.columns = ['Connection']
-Fer_w_T = Fer_w_T.drop('Year')
-Fer_w_T.reset_index(inplace=True)
-Fer_w_T.rename(columns={'index': 'Year'}, inplace=True)
-Fer_w_T['Year'] = Fer_w_T['Year'].astype(int)
-Fer_w_T['Connection'] = Fer_w_T['Connection'].astype(float)
+FB_UK_Data_T.columns = ['Connection']
+FB_UK_Data_T = FB_UK_Data_T.drop('Year')
+FB_UK_Data_T.reset_index(inplace=True)
+FB_UK_Data_T.rename(columns={'index': 'Year'}, inplace=True)
+FB_UK_Data_T['Year'] = FB_UK_Data_T['Year'].astype(int)
+FB_UK_Data_T['Connection'] = FB_UK_Data_T['Connection'].astype(float)
 
 # Appending to x and y values for modeling
-x_val = Fer_w_T['Year'].values.astype(float)
-y_val = Fer_w_T['Connection'].values.astype(float)
+x_val = FB_UK_Data_T['Year'].values.astype(float)
+y_val = FB_UK_Data_T['Connection'].values.astype(float)
 
 # Fitting the polynomial model to the data
 popt, pcov = curve_fit(polynomial_fit, x_val, y_val)
@@ -222,18 +230,18 @@ y_fut_err = error_range(fut_x, polynomial_fit, popt, pcov)
 
 # Plotting the fitting data and predicted data
 plt.figure(figsize=(10, 6))
-plt.plot(x_val, y_val, 'g-', label='Actual Data')
+plt.plot(x_val, y_val, 'g-', label='Past values')
 plt.plot(x_val, polynomial_fit(x_val, *popt), 'b-',
-         label='Fitted Model')
+         label='Polynomial fit')
 plt.fill_between(x_val, polynomial_fit(x_val, *popt) -
                  y_err, polynomial_fit(x_val, *popt) + y_err, 
-                 color='lightblue',alpha=0.5, label='CI for Actual Data')
+            color='lightblue',alpha=0.5, label='Error range of Past values')
 plt.plot(fut_x, fut_y, 'b--', label='Future values')
 plt.fill_between(fut_x, fut_y - y_fut_err, fut_y +
                  y_fut_err, color='lightblue',
-                 alpha=0.5, label='CI for  Future values')
-plt.title('Fitting & Predicting Future for Fertility Rates for Country India')
+                 alpha=0.5, label='Error range of Future values')
+plt.title('Ploynomial Fit & Predicting Future for Fixed Broadband  for UK')
 plt.xlabel('Year')
-plt.ylabel('Arable land [Hect per person]')
+plt.ylabel('Fixed broadband subscriptions (per 100 people)')
 plt.legend()
 plt.show()
